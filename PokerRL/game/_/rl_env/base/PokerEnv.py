@@ -89,6 +89,10 @@ class PokerEnv:
     IS_FIXED_LIMIT_GAME = NotImplementedError
     IS_POT_LIMIT_GAME = NotImplementedError
 
+    # Whether get_hand_rank() returns (hi_rank, lo_rank_or_None) pairs that must be
+    # split hi/lo at showdown (e.g. Omaha Hi/Lo) instead of a single scalar rank.
+    USES_HI_LO = False
+
     # Only relevant if Limit game!
     MAX_N_RAISES_PER_ROUND = NotImplementedError
     ROUND_WHERE_BIG_BET_STARTS = NotImplementedError
@@ -266,7 +270,11 @@ class PokerEnv:
             # __________________________  Return Complete _Observation Space  __________________________
             # Tuple (lots of spaces.Discrete and spaces.Box)
             _observation_space = spaces.Tuple(_table_space + _player_space + _board_space)
-            _observation_space.shape = [len(_observation_space.spaces)]
+            # gym >= 0.21 made Space.shape a read-only property backed by ._shape;
+            # the public setter used here originally no longer exists, so set the
+            # backing attribute directly. Pre-existing repo/dependency-version
+            # incompatibility, unrelated to Omaha Hi/Lo.
+            _observation_space._shape = (len(_observation_space.spaces),)
 
         else:
             # __________________________  Public Information About Game State  _________________________
@@ -335,7 +343,11 @@ class PokerEnv:
             # __________________________  Return Complete _Observation Space  __________________________
             # Tuple (lots of spaces.Discrete and spaces.Box)
             _observation_space = spaces.Tuple(_table_space + _player_space + _board_space)
-            _observation_space.shape = [len(_observation_space.spaces)]
+            # gym >= 0.21 made Space.shape a read-only property backed by ._shape;
+            # the public setter used here originally no longer exists, so set the
+            # backing attribute directly. Pre-existing repo/dependency-version
+            # incompatibility, unrelated to Omaha Hi/Lo.
+            _observation_space._shape = (len(_observation_space.spaces),)
         return _observation_space, obs_idx_dict, obs_parts_idxs_dict
 
     def _init_from_args(self, env_args, is_evaluating):
@@ -497,6 +509,10 @@ class PokerEnv:
             self._hh_logger.bb_posted(player.seat_id, self.BIG_BLIND)
 
     def _payout_pots(self):
+        if self.USES_HI_LO:
+            self._payout_pots_hi_lo()
+            return
+
         self._assign_hand_ranks_to_all_players()
 
         if self.N_SEATS == 2:
@@ -575,6 +591,83 @@ class PokerEnv:
             # set all 0
             self.side_pots = [0] * self.N_SEATS
             self.main_pot = 0
+
+    def _get_hi_lo_shares(self, players_to_consider):
+        """
+        For Omaha Hi/Lo (self.USES_HI_LO): splits one pot's shares between the best hi
+        hand and the best qualifying (8-or-better) lo hand. player.hand_rank is expected
+        to be a (hi_rank, lo_rank_or_None) pair (see OmahaHiLoRules.get_hand_rank).
+
+        Returns:
+            dict: {PokerPlayer: float share of the pot}. Shares sum to 1.0. A player who
+                wins both halves (or is the only eligible player) appears once with the
+                combined share.
+        """
+        hi_best = max(p.hand_rank[0] for p in players_to_consider)
+        hi_winners = [p for p in players_to_consider if p.hand_rank[0] == hi_best]
+
+        lo_qualified = [p for p in players_to_consider if p.hand_rank[1] is not None]
+
+        shares = {}
+        if len(lo_qualified) == 0:
+            # No qualifying low -- the hi hand(s) scoop the entire pot.
+            for p in hi_winners:
+                shares[p] = shares.get(p, 0.0) + 1.0 / len(hi_winners)
+        else:
+            lo_best = max(p.hand_rank[1] for p in lo_qualified)
+            lo_winners = [p for p in lo_qualified if p.hand_rank[1] == lo_best]
+
+            for p in hi_winners:
+                shares[p] = shares.get(p, 0.0) + 0.5 / len(hi_winners)
+            for p in lo_winners:
+                shares[p] = shares.get(p, 0.0) + 0.5 / len(lo_winners)
+
+        return shares
+
+    def _payout_pots_hi_lo(self):
+        """
+        Omaha Hi/Lo (self.USES_HI_LO) version of _payout_pots(). Splits each pot (main
+        pot + side pots) between hi and lo winners via _get_hi_lo_shares() instead of
+        awarding it whole to the single-scalar-rank winner(s).
+        """
+        self._assign_hand_ranks_to_all_players()
+
+        pots = [self.main_pot] + self.side_pots
+        pot_ranks = np.arange(start=-1, stop=len(self.side_pots))
+
+        for pot, rank in zip(pots, pot_ranks):
+            eligible_players = [p for p in self.seats if p.side_pot_rank >= rank and not p.folded_this_episode]
+            if len(eligible_players) == 0:
+                continue
+
+            shares = self._get_hi_lo_shares(players_to_consider=eligible_players)
+
+            remaining = int(pot)
+            recipients = list(shares.keys())
+            for p in recipients:
+                amt = int(pot * shares[p])  # rounds down
+                remaining -= amt
+                if amt > 0:
+                    p.award(amt)
+                if self._hh_logger is not None:
+                    self._hh_logger.push_winner(p_id=p.seat_id, amount=amt, cards=p.hand,
+                                                pot_type=0 if len(recipients) == 1 else 1)
+
+            # distribute the rounding remainder randomly, same convention as the hi-only path
+            if remaining > 0:
+                shuffled_idxs = np.arange(len(recipients))
+                np.random.shuffle(shuffled_idxs)
+                for idx in shuffled_idxs[:remaining]:
+                    p = recipients[idx]
+                    p.award(1)
+                    if self._hh_logger is not None:
+                        self._hh_logger.push_winner(p_id=p.seat_id, amount=1, cards=p.hand, pot_type=1)
+
+        if self._hh_logger is not None:
+            self._hh_logger.show_down()
+
+        self.side_pots = [0] * self.N_SEATS
+        self.main_pot = 0
 
     def _pay_all_to_one_player(self, player_to_pay_to):
         """

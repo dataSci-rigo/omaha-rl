@@ -8,6 +8,7 @@ A collection of Poker games often used in computational poker research.
 from PokerRL.game.Poker import Poker
 from PokerRL.game._.rl_env.game_rules import HoldemRules, LeducRules, FlopHoldemRules, BigLeducRules
 from PokerRL.game._.rl_env.game_rules_plo import PLORules
+from PokerRL.game._.rl_env.game_rules_omaha_hilo import OmahaHiLoRules
 from PokerRL.game._.rl_env.poker_types.DiscretizedPokerEnv import DiscretizedPokerEnv
 from PokerRL.game._.rl_env.poker_types.LimitPokerEnv import LimitPokerEnv
 from PokerRL.game._.rl_env.poker_types.NoLimitPokerEnv import NoLimitPokerEnv
@@ -285,6 +286,46 @@ class PLO(PLORules, DiscretizedPokerEnv):
                                      hh_logger=None)
 
 
+
+# """""""""""""""""""""""
+# Fixed-Limit Omaha Hi/Lo
+# """""""""""""""""""""""
+class FixedLimitOmahaHiLo(OmahaHiLoRules, LimitPokerEnv):
+    """
+    Omaha Hi/Lo (8-or-better), played Fixed-Limit. 2-6 players, 4 hole cards,
+    must use exactly 2 of them. Each pot is split between the best hi hand and
+    the best qualifying (8-or-better) low hand; hi scoops if no low qualifies.
+    """
+
+    RULES = OmahaHiLoRules
+    IS_FIXED_LIMIT_GAME = True
+    IS_POT_LIMIT_GAME = False
+    MAX_N_RAISES_PER_ROUND = {
+        Poker.PREFLOP: 4,
+        Poker.FLOP: 4,
+        Poker.TURN: 4,
+        Poker.RIVER: 4,
+    }
+    ROUND_WHERE_BIG_BET_STARTS = Poker.TURN
+
+    SMALL_BLIND = 1
+    BIG_BLIND = 2
+    ANTE = 0
+    SMALL_BET = 2
+    BIG_BET = 4
+    DEFAULT_STACK_SIZE = 48
+
+    EV_NORMALIZER = 1000.0 / BIG_BLIND  # Milli BB
+    WIN_METRIC = Poker.MeasureBB
+
+    def __init__(self, env_args, lut_holder, is_evaluating):
+        OmahaHiLoRules.__init__(self)
+        LimitPokerEnv.__init__(self,
+                               env_args=env_args,
+                               lut_holder=lut_holder,
+                               is_evaluating=is_evaluating)
+
+
 """
 register all new envs here!
 """
@@ -298,4 +339,5 @@ ALL_ENVS = [
     DiscretizedNLHoldem,
     Flop5Holdem,
     PLO,
+    FixedLimitOmahaHiLo,
 ]
