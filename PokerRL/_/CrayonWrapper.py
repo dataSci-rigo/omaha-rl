@@ -22,7 +22,13 @@ class CrayonWrapper:
             create_dir_if_not_exist(path_log_storage)
 
         self._chief_handle = chief_handle
-        self._crayon = CrayonClient(hostname=crayon_server_address)
+        try:
+            self._crayon = CrayonClient(hostname=crayon_server_address)
+        except Exception as e:
+            # No crayon/TensorBoard server running; JSON logs on disk still work without it.
+            print("CrayonWrapper: no crayon server at '" + str(crayon_server_address) + "' (" + str(e)
+                  + "). Continuing without TensorBoard.")
+            self._crayon = None
         self._experiments = {}
         self.clear()
         self._custom_logs = {}  # dict of exps containing dict of graph names containing lists of {step: val, } dicts
@@ -54,7 +60,7 @@ class CrayonWrapper:
             create_dir_if_not_exist(path=path_json)
             for e in self._experiments.values():
                 e.to_zip(filename=ospj(path_crayon, e.xp_name + ".zip"))
-                write_dict_to_file_json(dictionary=self._custom_logs, _dir=path_json, file_name="logs")
+            write_dict_to_file_json(dictionary=self._custom_logs, _dir=path_json, file_name="logs")
 
     def update_from_log_buffer(self):
         """
@@ -64,8 +70,9 @@ class CrayonWrapper:
         new_v, exp_names = self._get_new_vals()
 
         for e in exp_names:
-            if e not in self._experiments.keys():
+            if e not in self._custom_logs.keys():
                 self._custom_logs[e] = {}
+            if self._crayon is not None and e not in self._experiments.keys():
                 try:
                     self._experiments[e] = self._crayon.create_experiment(xp_name=e)
                 except ValueError:
@@ -79,7 +86,8 @@ class CrayonWrapper:
                     step = int(data_point[0])
                     val = data_point[1]
 
-                    self._experiments[name].add_scalar_value(name=graph_name, step=step, value=val)
+                    if name in self._experiments:
+                        self._experiments[name].add_scalar_value(name=graph_name, step=step, value=val)
                     if graph_name not in self._custom_logs[name].keys():
                         self._custom_logs[name][graph_name] = []
 
