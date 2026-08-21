@@ -30,6 +30,7 @@ from pokerkit import Card as PKCard  # noqa: E402
 import numpy as np  # noqa: E402
 
 from DeepCFR.EvalAgentDeepCFR import EvalAgentDeepCFR  # noqa: E402
+from MCCFR.EvalAgentMCCFR import EvalAgentMCCFR  # noqa: E402
 from PokerRL.game.AgentTournament_hu import AgentTournament  # noqa: E402
 from PokerRL.game.games import FixedLimitOmahaHiLo  # noqa: E402
 from PokerRL.game.Poker import Poker  # noqa: E402
@@ -104,11 +105,22 @@ def load_eval_agent(path):
     discarded. As N shrinks it converges toward CFR's *current* iterate, which
     has no convergence guarantee; only the average does. Any benchmark run
     through the old trimmer measured that biased approximation, not this agent.
+    Dispatches on the pickled profile type, so Deep CFR and tabular MCCFR
+    snapshots can be benchmarked through the identical harness: both agent
+    classes expose the same reset/get_action/notify_of_action surface.
     """
+    from PokerRL.util.file_util import load_pickle
+    state = load_pickle(path=path)
+    if type(state["t_prof"]).__name__ == "MCCFRProfile":
+        agent = EvalAgentMCCFR(t_prof=state["t_prof"])
+        agent.load_state_dict(state=state)
+        return agent
     return EvalAgentDeepCFR.load_from_disk(path_to_eval_agent=path)
 
 
 def describe_strat_buffers(agent, label):
+    if not hasattr(agent, "_strategy_buffers"):
+        return  # tabular MCCFR agent: no net buffers to describe
     sizes = [b.size for b in agent._strategy_buffers]
     print(f"  ({label}: strategy nets per seat = {sizes})")
 
@@ -261,11 +273,18 @@ def build_parser():
                    help="eval_agent step to benchmark (default: the latest available)")
     p.add_argument("--old-step", type=int, default=0,
                    help="eval_agent step to use as the 'old' opponent (default: 0)")
+    p.add_argument("--profile", default=None,
+                   help="eval_agent profile name to benchmark (default: "
+                        f"{PROFILE_NAME}); e.g. MCCFR_M1 for the tabular agent")
     return p
 
 
 if __name__ == '__main__':
     args = build_parser().parse_args()
+
+    if args.profile:
+        PROFILE_NAME = args.profile
+        _CANDIDATE_NAMES = (PROFILE_NAME, PROFILE_NAME + "_")
 
     if args.hands < 2:
         raise SystemExit("--hands must be at least 2 (one per seat).")
