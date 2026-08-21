@@ -75,6 +75,25 @@ class TestSolverSmoke(unittest.TestCase):
             np.testing.assert_array_equal(a.regret[s], b.regret[s])
             np.testing.assert_array_equal(a.avg_strat[s], b.avg_strat[s])
 
+    def test_3seat_regret_falls_and_determinism(self):
+        from MCCFR.betting_tree import load_or_build_tree
+        tree3 = load_or_build_tree(n_seats=3)
+        solver = ESMCCFRSolver(tree3, ConstantBucketer(), seed=31)
+        solver.run(1000)
+        early = _norm_pos_regret(solver)
+        solver.run(4000)
+        late = _norm_pos_regret(solver)
+        self.assertLess(late, early,
+                        f"3-seat normalized regret not falling: {early} -> {late}")
+        self.assertTrue(all(f > 0 for f in solver.fraction_touched()))
+
+        b = ESMCCFRSolver(tree3, ConstantBucketer(), seed=31)
+        b.run(200)
+        c = ESMCCFRSolver(tree3, ConstantBucketer(), seed=31)
+        c.run(200)
+        for s in range(4):
+            np.testing.assert_array_equal(b.regret[s], c.regret[s])
+
     def test_save_load_roundtrip(self):
         import tempfile, os
         solver = ESMCCFRSolver(self.tree, ConstantBucketer(), seed=9)

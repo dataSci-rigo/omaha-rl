@@ -84,13 +84,27 @@ class BotSeat:
 
 
 class DeepCFRSeat:
-    """Adapter for a trained EvalAgentDeepCFR. Mirrors the table in the agent's
-    internal env, so the agent's training n_seats must equal the table's."""
+    """Adapter for a trained EvalAgent (Deep CFR or tabular MCCFR -- both
+    expose reset/get_action/notify_of_action). Mirrors the table in the
+    agent's internal env, so the agent's training n_seats must equal the
+    table's.
+
+    Loader dispatches on the pickled profile type, same pattern as
+    eval_agent_vs_bots.py:load_eval_agent (coordinated edit: this also seats
+    future agent kinds that follow the same profile-in-pickle convention,
+    e.g. a distilled student)."""
 
     def __init__(self, name, path, table_n_seats):
-        from DeepCFR.EvalAgentDeepCFR import EvalAgentDeepCFR
+        from PokerRL.util.file_util import load_pickle
         self.name = name
-        self._agent = EvalAgentDeepCFR.load_from_disk(path_to_eval_agent=path)
+        state = load_pickle(path=path)
+        if type(state["t_prof"]).__name__ == "MCCFRProfile":
+            from MCCFR.EvalAgentMCCFR import EvalAgentMCCFR
+            self._agent = EvalAgentMCCFR(t_prof=state["t_prof"])
+            self._agent.load_state_dict(state=state)
+        else:
+            from DeepCFR.EvalAgentDeepCFR import EvalAgentDeepCFR
+            self._agent = EvalAgentDeepCFR.load_from_disk(path_to_eval_agent=path)
         trained_seats = self._agent.env_bldr.N_SEATS
         if trained_seats != table_n_seats:
             raise SystemExit(

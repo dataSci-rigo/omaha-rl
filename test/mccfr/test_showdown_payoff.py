@@ -97,5 +97,64 @@ class TestShowdownPayoff(unittest.TestCase):
             self._assert_match(h0, h1, board, pot)
 
 
+class TestShowdownPayoffMultiway(unittest.TestCase):
+    """3-seat differential vs env._payout_pots(), incl. a folded seat whose
+    chips are dead money and 3-way lo ties with odd chips."""
+
+    @classmethod
+    def setUpClass(cls):
+        from MCCFR.showdown import showdown_payoff_multi
+        cls.showdown_payoff_multi = staticmethod(showdown_payoff_multi)
+        cls.lut_holder = FixedLimitOmahaHiLo.get_lut_holder()
+        args = FixedLimitOmahaHiLo.ARGS_CLS(
+            n_seats=3, starting_stack_sizes_list=[2000] * 3,
+            stack_randomization_range=(0, 0))
+        cls.env = FixedLimitOmahaHiLo(env_args=args, lut_holder=cls.lut_holder,
+                                      is_evaluating=True)
+
+    def _assert_match(self, hands_2d, board_2d, pot, folded):
+        env = self.env
+        env.reset()
+        env.board = board_2d
+        env.main_pot = pot
+        env.side_pots = [0, 0, 0]
+        for p, hand in zip(env.seats, hands_2d):
+            p.hand = hand
+            p.folded_this_episode = folded[p.seat_id]
+            p.side_pot_rank = -1
+            p.current_bet = 0
+        before = [p.stack for p in env.seats]
+        env._payout_pots()
+        env_gains = tuple(p.stack - s for p, s in zip(env.seats, before))
+        self.assertEqual(sum(env_gains), pot)
+
+        ranks = [None if folded[p] else
+                 env.get_hand_rank(hand_2d=hands_2d[p], board_2d=board_2d)
+                 for p in range(3)]
+        ours = self.showdown_payoff_multi(ranks, pot, 3)
+        self.assertEqual(ours, env_gains, f"pot={pot} folded={folded}")
+
+    def test_random_3way_and_dead_money(self):
+        rng = np.random.default_rng(17)
+        for i in range(300):
+            deal = rng.permutation(52)
+            to2d = self.lut_holder.get_2d_cards
+            hands = [to2d(deal[4 * p:4 * p + 4]) for p in range(3)]
+            board = to2d(deal[12:17])
+            pot = int(rng.integers(1, 25)) * 4
+            folded = [False, False, False]
+            if i % 3 == 1:  # one seat folded: dead money, 2-way showdown
+                folded[int(rng.integers(0, 3))] = True
+            self._assert_match(hands, board, pot, folded)
+
+    def test_three_way_lo_tie_odd_chips(self):
+        # all three hold A2xx for the same nut low; distinct hi strength
+        hands = [_cards("As 2s Ks Qs"), _cards("Ah 2h 9c 8d"),
+                 _cards("Ad 2d 6h 6s")]
+        board = _cards("3c 4c 5d Jh Jc")
+        for pot in (99, 100, 101, 102):
+            self._assert_match(hands, board, pot, [False] * 3)
+
+
 if __name__ == '__main__':
     unittest.main()

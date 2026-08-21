@@ -66,7 +66,7 @@ def main():
         print(f"\nhand [{args.hand}] -> preflop class {cls}")
 
         def show(node, label):
-            row = avg[0][tree.decision_idx[node] * K[0] + cls]
+            row = avg[0][tree.infoset_idx[node] * K[0] + cls]
             s = row.sum()
             if s <= 0:
                 print(f"  {label:34s} (never visited)")

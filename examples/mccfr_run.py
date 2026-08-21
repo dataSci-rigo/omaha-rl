@@ -30,7 +30,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from MCCFR.abstraction.m1_bins import M1Bucketer                  # noqa: E402
-from MCCFR.betting_tree import build_tree                         # noqa: E402
+from MCCFR.betting_tree import load_or_build_tree                 # noqa: E402
 from MCCFR.EvalAgentMCCFR import EvalAgentMCCFR                   # noqa: E402
 from MCCFR.profile import MCCFRProfile                            # noqa: E402
 from MCCFR.solver import ESMCCFRSolver                            # noqa: E402
@@ -47,7 +47,7 @@ def in_night_window(now=None):
 
 def export_eval_agent(solver, args):
     t_prof = MCCFRProfile(name=args.profile, k_postflop=args.k_postflop,
-                          n_rollouts=args.rollouts)
+                          n_rollouts=args.rollouts, n_seats=args.n_seats)
     agent = EvalAgentMCCFR(t_prof=t_prof)
     agent.update_weights({"avg_strategy": solver.average_strategy(),
                           "K": solver.K})
@@ -59,7 +59,9 @@ def export_eval_agent(solver, args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--profile", default="MCCFR_M1")
+    ap.add_argument("--profile", default=None,
+                    help="default: MCCFR_M1 (2 seats) / MCCFR_3S_M1 (3)")
+    ap.add_argument("--n-seats", type=int, default=2, choices=[2, 3])
     ap.add_argument("--milestone", type=int, default=1, choices=[1])
     ap.add_argument("--iters", type=int, required=True,
                     help="target TOTAL iteration count (not additional)")
@@ -71,6 +73,8 @@ def main():
     ap.add_argument("--export-every-iters", type=int, default=200000)
     ap.add_argument("--allow-night", action="store_true")
     args = ap.parse_args()
+    if args.profile is None:
+        args.profile = "MCCFR_M1" if args.n_seats == 2 else "MCCFR_3S_M1"
 
     if in_night_window() and not args.allow_night:
         sys.exit("refusing to start inside 23:00-07:00 (Deep CFR's window); "
@@ -80,9 +84,10 @@ def main():
     os.makedirs(ckpt_dir, exist_ok=True)
     ckpt_path = os.path.join(ckpt_dir, "mccfr_state.npz")
 
-    tree = build_tree()
+    tree = load_or_build_tree(n_seats=args.n_seats)
     bucketer = M1Bucketer(k_postflop=args.k_postflop, n_rollouts=args.rollouts,
-                          rng=np.random.default_rng(args.seed + 1))
+                          rng=np.random.default_rng(args.seed + 1),
+                          n_opponents=args.n_seats - 1)
 
     if os.path.exists(ckpt_path):
         if not args.resume:
