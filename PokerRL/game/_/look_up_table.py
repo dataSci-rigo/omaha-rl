@@ -215,39 +215,74 @@ class _LutGetterPLO(_LutGetterBase):
         start = time.process_time()
         D = self.rules.N_SUITS + self.rules.N_RANKS
 
-        lut = np.empty(shape=(self.rules.RANGE_SIZE, D * self.rules.N_HOLE_CARDS), dtype=np.int8)
+        # np.zeros, NOT np.empty. The previous "optimized" version used np.empty for
+        # both the LUT and each priv_o row and only ever wrote the 1-bits, leaving the
+        # remaining ~60 bytes per row as uninitialized malloc garbage. Because the
+        # freed row buffer was reused across loop iterations, stale bits accumulated
+        # until nearly all rows collapsed into the same saturated pattern: measured
+        # 113 distinct rows for 270,725 hands on the postflop LUT, and TWO distinct
+        # rows on the preflop LUT. Every network trained through this fork's PLO/O8
+        # path was therefore close to card-blind at the private-observation level --
+        # consistent with agents that beat their own past snapshots yet lost ~500
+        # mBB/hand to a simple rule-based bot. The upstream Holdem getter (line ~40)
+        # always used np.zeros; the regression arrived with the fork's speed rewrite.
+        lut = np.zeros(shape=(self.rules.RANGE_SIZE, D * self.rules.N_HOLE_CARDS), dtype=np.int8)
 
         # convert array of 1d hands to array of 2d hands
         d2_range_lut = hc_1d_to_2d_lut[range_idx_to_hc_lut]
 
         if not preflop_suit_bucketing:
             for range_idx, element in enumerate(d2_range_lut):
-                priv_o = np.empty(shape=self.rules.N_HOLE_CARDS * D, dtype=np.int8)
-                priv_o[D * 0 + element[0, 0]] = 1
-                priv_o[D * 0 + self.rules.N_RANKS + element[0, 1]] = 1
-                priv_o[D * 1 + element[1, 0]] = 1
-                priv_o[D * 1 + self.rules.N_RANKS + element[1, 1]] = 1
-                priv_o[D * 2 + element[2, 0]] = 1
-                priv_o[D * 2 + self.rules.N_RANKS + element[2, 1]] = 1
-                priv_o[D * 3 + element[3, 0]] = 1
-                priv_o[D * 3 + self.rules.N_RANKS + element[3, 1]] = 1
-
-                lut[range_idx] = priv_o
+                row = lut[range_idx]
+                row[D * 0 + element[0, 0]] = 1
+                row[D * 0 + self.rules.N_RANKS + element[0, 1]] = 1
+                row[D * 1 + element[1, 0]] = 1
+                row[D * 1 + self.rules.N_RANKS + element[1, 1]] = 1
+                row[D * 2 + element[2, 0]] = 1
+                row[D * 2 + self.rules.N_RANKS + element[2, 1]] = 1
+                row[D * 3 + element[3, 0]] = 1
+                row[D * 3 + self.rules.N_RANKS + element[3, 1]] = 1
         else:
+            # Preflop bucketing via SUIT ISOMORPHISM, replacing the old suit-stripping.
+            #
+            # The old branch dropped the suit bits entirely, collapsing 270,725 hands
+            # into 1,820 rank multisets. That imported a Hold'em intuition ("suits
+            # don't matter preflop") that is false for Omaha: suits are irrelevant to
+            # the 8-or-better LOW (purely rank-based), but the HIGH half runs on them
+            # -- you must play exactly two hole cards, so the suit pattern determines
+            # all flush potential, and in Hi/Lo the scoop potential. As2s3h4h (nut low
+            # draw + two flush draws) and As2h3d4c (same low, no high) were fed to the
+            # net as the same hand.
+            #
+            # Suit isomorphism is the lossless version: relabel suits by the
+            # lexicographically-minimal assignment over all 4! = 24 permutations, so
+            # strategically identical hands (e.g. AsKs2h3h and AhKh2s3s) share one
+            # representation while genuinely different suit PATTERNS stay distinct.
+            # Yields 16,432 classes (exact, via Burnside over S4).
+            import itertools
+            ranks = d2_range_lut[:, :, 0].astype(np.int32)   # (R, 4)
+            suits = d2_range_lut[:, :, 1].astype(np.int32)   # (R, 4)
 
-            # for a preflop table we bucket hands, not setting any suit at all so no suit difference
-            for range_idx, element in enumerate(d2_range_lut[:, ]):
-                priv_o = np.empty(shape=self.rules.N_HOLE_CARDS * D, dtype=np.int8)
-                priv_o[D * 0 + element[0, 0]] = 1
-                # priv_o[D * 0 + self.rules.N_RANKS + element[0,1]] = 1
-                priv_o[D * 1 + element[1, 0]] = 1
-                # priv_o[D * 1 + self.rules.N_RANKS + element[0,1]] = 1
-                priv_o[D * 2 + element[2, 0]] = 1
-                # priv_o[D * 2 + self.rules.N_RANKS + element[0,1]] = 1
-                priv_o[D * 3 + element[3, 0]] = 1
-                # priv_o[D * 3 + self.rules.N_RANKS + element[0,1]] = 1
+            best_key = None
+            best_codes = None
+            for perm in itertools.permutations(range(self.rules.N_SUITS)):
+                p = np.array(perm, dtype=np.int32)
+                codes = np.sort(ranks * self.rules.N_SUITS + p[suits], axis=1)  # (R, 4)
+                # pack 4 sorted card codes (< 52 < 64) into one int32 key
+                key = (((codes[:, 0] * 64 + codes[:, 1]) * 64 + codes[:, 2]) * 64 + codes[:, 3])
+                if best_key is None:
+                    best_key, best_codes = key, codes
+                else:
+                    better = key < best_key
+                    best_key = np.where(better, key, best_key)
+                    best_codes = np.where(better[:, None], codes, best_codes)
 
-                lut[range_idx] = priv_o
+            canon_ranks = best_codes // self.rules.N_SUITS   # (R, 4)
+            canon_suits = best_codes % self.rules.N_SUITS    # (R, 4)
+            rows = np.arange(self.rules.RANGE_SIZE)
+            for slot in range(self.rules.N_HOLE_CARDS):
+                lut[rows, D * slot + canon_ranks[:, slot]] = 1
+                lut[rows, D * slot + self.rules.N_RANKS + canon_suits[:, slot]] = 1
 
         print(f"time elapsed for get_range_idx_to_private_obs_LUT PLO {time.process_time() - start}")
 

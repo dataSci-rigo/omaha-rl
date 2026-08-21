@@ -94,6 +94,11 @@ class _LogBuffer:
             self._experiments[exp_name][graph_name] = []
 
         self._experiments[exp_name][graph_name].append([step, value])
+        # Never cleared otherwise -- unbounded over a long-running session.
+        # get_new_values() already drains _new_values (below) for consumers;
+        # this list only needs recent history, not every value since start.
+        if len(self._experiments[exp_name][graph_name]) > 2000:
+            del self._experiments[exp_name][graph_name][:-2000]
 
         if exp_name not in self._new_values.keys():
             self._new_values[exp_name] = {}

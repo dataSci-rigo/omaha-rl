@@ -22,7 +22,16 @@ class CrayonWrapper:
             create_dir_if_not_exist(path_log_storage)
 
         self._chief_handle = chief_handle
-        self._crayon = CrayonClient(hostname=crayon_server_address)
+        try:
+            self._crayon = CrayonClient(hostname=crayon_server_address)
+        except (ValueError, ConnectionError):
+            # PyCrayon (a TensorBoard predecessor) needs its own Docker
+            # container running on crayon_server_address:8889. It's purely a
+            # metrics-visualization sink -- not part of CFR itself -- so if
+            # it's not up, degrade to no-op instead of failing training.
+            print(f"[CrayonWrapper] No crayon server at {crayon_server_address} -- "
+                 f"live metrics dashboard disabled, training continues normally.")
+            self._crayon = None
         self._experiments = {}
         self.clear()
         self._custom_logs = {}  # dict of exps containing dict of graph names containing lists of {step: val, } dicts
@@ -61,11 +70,15 @@ class CrayonWrapper:
         Pulls newly added logs from the chief onto whatever worker CrayonWrapper runs on. It then adds all these new
         logs to Tensorboard (i.e. PyCrayon's docker container)
         """
+        # Always drain the chief's log buffer (even with crayon disabled) so
+        # it doesn't grow unbounded over a long training run; just skip the
+        # crayon-specific push when there's no server to push to.
         new_v, exp_names = self._get_new_vals()
 
         for e in exp_names:
-            if e not in self._experiments.keys():
+            if e not in self._custom_logs.keys():
                 self._custom_logs[e] = {}
+            if self._crayon is not None and e not in self._experiments.keys():
                 try:
                     self._experiments[e] = self._crayon.create_experiment(xp_name=e)
                 except ValueError:
@@ -79,11 +92,17 @@ class CrayonWrapper:
                     step = int(data_point[0])
                     val = data_point[1]
 
-                    self._experiments[name].add_scalar_value(name=graph_name, step=step, value=val)
+                    if self._crayon is not None:
+                        self._experiments[name].add_scalar_value(name=graph_name, step=step, value=val)
                     if graph_name not in self._custom_logs[name].keys():
                         self._custom_logs[name][graph_name] = []
 
                     self._custom_logs[name][graph_name].append({step: val})
+                    # Never cleared otherwise -- unbounded over a long-running
+                    # session. export_all() writes this to disk periodically;
+                    # only recent history needs to stay resident in memory.
+                    if len(self._custom_logs[name][graph_name]) > 2000:
+                        del self._custom_logs[name][graph_name][:-2000]
 
     def _get_new_vals(self):
         """

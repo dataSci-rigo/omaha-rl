@@ -28,11 +28,29 @@ class Chief(_ChiefBase):
         # SD-CFR
         # """"""""""""""""""""""""""""
         if self._SINGLE:
+            # Was hard-coded max_size=None, i.e. retain one net per player per CFR
+            # iteration forever. SD-CFR's strategy IS that weighted average, so memory
+            # grew ~4.8MB/net x n_seats/iteration -- about 2.4GB per training night,
+            # without bound. Accommodating that by shedding workers and shrinking the
+            # advantage buffer is a treadmill; bounding it is the actual fix.
+            #
+            # StrategyBuffer.add() already reservoir-samples once max_size is set, and
+            # each net's cfr_iteration weight travels with it, so the bounded mixture
+            # stays a CONSISTENT estimator of the full SD-CFR average (bias O(1/N)) --
+            # unlike keeping the most recent N, which is biased toward CFR's current
+            # iterate and has no convergence guarantee.
+            #
+            # Safe here only because nothing calls the Chief's index-range pull
+            # protocol (_pull_single_eval_strat), whose cursor assumes buffer index ==
+            # arrival order and that entries are never overwritten. Its sole caller is
+            # PokerRL/eval/_/EvaluatorMasterBase.py, reached only when eval_methods is
+            # non-empty -- hence the assert below.
+            max_strat_buf_size = self._t_prof.eval_agent_max_strat_buf_size
             self._strategy_buffers = [
                 StrategyBuffer(t_prof=t_prof,
                                owner=p,
                                env_bldr=self._env_bldr,
-                               max_size=None,
+                               max_size=max_strat_buf_size,
                                device=self._t_prof.device_inference)
                 for p in range(t_prof.n_seats)
             ]

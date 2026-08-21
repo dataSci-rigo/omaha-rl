@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from PokerRL.rl import rl_util
+from PokerRL.rl.neural._shared_luts import get_shared_lut
 
 
 class MainPokerModuleRNN(nn.Module):
@@ -79,8 +80,10 @@ class MainPokerModuleRNN(nn.Module):
                 bidirectional=False,
                 batch_first=False
             )
-        self.lut_range_idx_2_priv_o = torch.from_numpy(self.env_bldr.lut_holder.LUT_RANGE_IDX_TO_PRIVATE_OBS)
-        self.lut_range_idx_2_priv_o = self.lut_range_idx_2_priv_o.to(device=self.device, dtype=torch.float32)
+        # Shared across all nets in this process -- see _shared_luts.get_shared_lut
+        # for why a per-net copy cost ~70MB here.
+        self.lut_range_idx_2_priv_o = get_shared_lut(self.env_bldr, self.device,
+                                                     "LUT_RANGE_IDX_TO_PRIVATE_OBS")
 
         self.to(device)
 

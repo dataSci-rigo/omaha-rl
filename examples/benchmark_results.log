@@ -1,0 +1,228 @@
+Starting benchmark run at Thu 20 Aug 2026 01:29:04 PM PDT
+Running as unit: run-u3055.scope; invocation ID: 3d0c56feedfe4aa9bb7ef9c60adb443e
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Benchmarking step 380 (/home/ai1/poker_ai_data/eval_agent/FLO_HiLo_HU_dense_residual_/380/eval_agentSINGLE.pkl)
+Hands per opponent: 20000 (10000 per seat)
+
+=== New (step 380) vs. Old (step 350): 20000 hands ===
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.8234573369999998
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.48329462699999937
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.7642543259999997
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.47458795999999914
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.7966774690000022
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.47624875300000014
+/home/ai1/Documents/omaha_rl/PokerRL-Omaha/DeepCFR/IterationStrategy.py:65: UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_new.cpp:252.)
+  pub_obses = torch.tensor(pub_obses, dtype=torch.float32, device=self._device)
+/home/ai1/Documents/omaha_rl/PokerRL-Omaha/DeepCFR/IterationStrategy.py:81: UserWarning: where received a uint8 condition tensor. This behavior is deprecated and will be removed in a future version of PyTorch. Use a boolean condition instead. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/TensorCompare.cpp:621.)
+  torch.where(legal_action_masks.byte(), advantages, torch.full_like(advantages, fill_value=-10e20))
+Hand: 0 out of 10000
+Hand: 100 out of 10000
+Hand: 200 out of 10000
+Hand: 300 out of 10000
+Hand: 400 out of 10000
+Hand: 500 out of 10000
+Hand: 600 out of 10000
+Hand: 700 out of 10000
+Hand: 800 out of 10000
+Hand: 900 out of 10000
+Hand: 1000 out of 10000
+Hand: 1100 out of 10000
+Hand: 1200 out of 10000
+Hand: 1300 out of 10000
+Hand: 1400 out of 10000
+Hand: 1500 out of 10000
+Hand: 1600 out of 10000
+Hand: 1700 out of 10000
+Hand: 1800 out of 10000
+Hand: 1900 out of 10000
+Hand: 2000 out of 10000
+Hand: 2100 out of 10000
+Hand: 2200 out of 10000
+Hand: 2300 out of 10000
+Hand: 2400 out of 10000
+Hand: 2500 out of 10000
+Hand: 2600 out of 10000
+Hand: 2700 out of 10000
+Hand: 2800 out of 10000
+Hand: 2900 out of 10000
+Hand: 3000 out of 10000
+Hand: 3100 out of 10000
+Hand: 3200 out of 10000
+Hand: 3300 out of 10000
+Hand: 3400 out of 10000
+Hand: 3500 out of 10000
+Hand: 3600 out of 10000
+Hand: 3700 out of 10000
+Hand: 3800 out of 10000
+Hand: 3900 out of 10000
+Hand: 4000 out of 10000
+Hand: 4100 out of 10000
+Hand: 4200 out of 10000
+Hand: 4300 out of 10000
+Hand: 4400 out of 10000
+Hand: 4500 out of 10000
+Hand: 4600 out of 10000
+Hand: 4700 out of 10000
+Hand: 4800 out of 10000
+Hand: 4900 out of 10000
+Hand: 5000 out of 10000
+Hand: 5100 out of 10000
+Hand: 5200 out of 10000
+Hand: 5300 out of 10000
+Hand: 5400 out of 10000
+Hand: 5500 out of 10000
+Hand: 5600 out of 10000
+Hand: 5700 out of 10000
+Hand: 5800 out of 10000
+Hand: 5900 out of 10000
+Hand: 6000 out of 10000
+Hand: 6100 out of 10000
+Hand: 6200 out of 10000
+Hand: 6300 out of 10000
+Hand: 6400 out of 10000
+Hand: 6500 out of 10000
+Hand: 6600 out of 10000
+Hand: 6700 out of 10000
+Hand: 6800 out of 10000
+Hand: 6900 out of 10000
+Hand: 7000 out of 10000
+Hand: 7100 out of 10000
+Hand: 7200 out of 10000
+Hand: 7300 out of 10000
+Hand: 7400 out of 10000
+Hand: 7500 out of 10000
+Hand: 7600 out of 10000
+Hand: 7700 out of 10000
+Hand: 7800 out of 10000
+Hand: 7900 out of 10000
+Hand: 8000 out of 10000
+Hand: 8100 out of 10000
+Hand: 8200 out of 10000
+Hand: 8300 out of 10000
+Hand: 8400 out of 10000
+Hand: 8500 out of 10000
+Hand: 8600 out of 10000
+Hand: 8700 out of 10000
+Hand: 8800 out of 10000
+Hand: 8900 out of 10000
+Hand: 9000 out of 10000
+Hand: 9100 out of 10000
+Hand: 9200 out of 10000
+Hand: 9300 out of 10000
+Hand: 9400 out of 10000
+Hand: 9500 out of 10000
+Hand: 9600 out of 10000
+Hand: 9700 out of 10000
+Hand: 9800 out of 10000
+Hand: 9900 out of 10000
+Hand: 0 out of 10000
+Hand: 100 out of 10000
+Hand: 200 out of 10000
+Hand: 300 out of 10000
+Hand: 400 out of 10000
+Hand: 500 out of 10000
+Hand: 600 out of 10000
+Hand: 700 out of 10000
+Hand: 800 out of 10000
+Hand: 900 out of 10000
+Hand: 1000 out of 10000
+Hand: 1100 out of 10000
+Hand: 1200 out of 10000
+Hand: 1300 out of 10000
+Hand: 1400 out of 10000
+Hand: 1500 out of 10000
+Hand: 1600 out of 10000
+Hand: 1700 out of 10000
+Hand: 1800 out of 10000
+Hand: 1900 out of 10000
+Hand: 2000 out of 10000
+Hand: 2100 out of 10000
+Hand: 2200 out of 10000
+Hand: 2300 out of 10000
+Hand: 2400 out of 10000
+Hand: 2500 out of 10000
+Hand: 2600 out of 10000
+Hand: 2700 out of 10000
+Hand: 2800 out of 10000
+Hand: 2900 out of 10000
+Hand: 3000 out of 10000
+Hand: 3100 out of 10000
+Hand: 3200 out of 10000
+Hand: 3300 out of 10000
+Hand: 3400 out of 10000
+Hand: 3500 out of 10000
+Hand: 3600 out of 10000
+Hand: 3700 out of 10000
+Hand: 3800 out of 10000
+Hand: 3900 out of 10000
+Hand: 4000 out of 10000
+Hand: 4100 out of 10000
+Hand: 4200 out of 10000
+Hand: 4300 out of 10000
+Hand: 4400 out of 10000
+Hand: 4500 out of 10000
+Hand: 4600 out of 10000
+Hand: 4700 out of 10000
+Hand: 4800 out of 10000
+Hand: 4900 out of 10000
+Hand: 5000 out of 10000
+Hand: 5100 out of 10000
+Hand: 5200 out of 10000
+Hand: 5300 out of 10000
+Hand: 5400 out of 10000
+Hand: 5500 out of 10000
+Hand: 5600 out of 10000
+Hand: 5700 out of 10000
+Hand: 5800 out of 10000
+Hand: 5900 out of 10000
+Hand: 6000 out of 10000
+Hand: 6100 out of 10000
+Hand: 6200 out of 10000
+Hand: 6300 out of 10000
+Hand: 6400 out of 10000
+Hand: 6500 out of 10000
+Hand: 6600 out of 10000
+Hand: 6700 out of 10000
+Hand: 6800 out of 10000
+Hand: 6900 out of 10000
+Hand: 7000 out of 10000
+Hand: 7100 out of 10000
+Hand: 7200 out of 10000
+Hand: 7300 out of 10000
+Hand: 7400 out of 10000
+Hand: 7500 out of 10000
+Hand: 7600 out of 10000
+Hand: 7700 out of 10000
+Hand: 7800 out of 10000
+Hand: 7900 out of 10000
+Hand: 8000 out of 10000
+Hand: 8100 out of 10000
+Hand: 8200 out of 10000
+Hand: 8300 out of 10000
+Hand: 8400 out of 10000
+Hand: 8500 out of 10000
+Hand: 8600 out of 10000
+Hand: 8700 out of 10000
+Hand: 8800 out of 10000
+Hand: 8900 out of 10000
+Hand: 9000 out of 10000
+Hand: 9100 out of 10000
+Hand: 9200 out of 10000
+Hand: 9300 out of 10000
+Hand: 9400 out of 10000
+Hand: 9500 out of 10000
+Hand: 9600 out of 10000
+Hand: 9700 out of 10000
+Hand: 9800 out of 10000
+Hand: 9900 out of 10000
+Played 20000 hands of poker.
+Player 1 SINGLE: 150.6999969482422 milliBB per hand +/- 85.52041811372669
+Player 2 SINGLE: -150.6999969482422 milliBB per hand+/- 85.52041811372669
+New (step 380) vs Old (step 350): +150.7 milliBB/hand [+65.2, +236.2] (95% CI)
+VERDICT: New agent is BEATING the old (step 350) snapshot
+
+Benchmark complete.
+Finished at Thu 20 Aug 2026 01:31:29 PM PDT

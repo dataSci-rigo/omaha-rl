@@ -77,4 +77,11 @@ class AdvReservoirBuffer(_ResBufBase):
 
     def load_state_dict(self, state):
         super().load_state_dict(state["base"])
-        self._adv_buffer = state["adv"]
+        saved_adv = state["adv"]
+        if saved_adv.shape[0] == self._adv_buffer.shape[0]:
+            self._adv_buffer = saved_adv
+        else:
+            # Buffer was grown -- see _ReservoirBufferBase.load_state_dict. Copy the
+            # saved rows into the front of the larger pre-allocated tensor; base
+            # already validated that the new max_size is the larger one.
+            self._adv_buffer[:self.size] = saved_adv[:self.size].to(self._adv_buffer.device)

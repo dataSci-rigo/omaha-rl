@@ -29,19 +29,31 @@ class MaybeRay:
         self.runs_cluster = runs_cluster
 
     # __________________________________________________ ray wrapper ___________________________________________________
+    # Ray removed `redis_max_memory=` (it dates from the pre-1.0 Redis-backed GCS);
+    # passing it to a modern ray raises TypeError immediately, which is why
+    # DISTRIBUTED=True could not start at all here. Verified against ray 2.56.1:
+    # inspect.signature(ray.init) has no such parameter, but still accepts
+    # object_store_memory.
+    #
+    # object_store_memory is also deliberately capped low rather than at 40% of
+    # system RAM. Ray actors are children of this process's cgroup, so on a 30GB
+    # box the old formula reserved ~12GB of object store, which together with the
+    # actors' own buffers would breach the training service's MemoryMax=16G. This
+    # workload only ships gradient and weight dicts between workers, not bulk data.
+    _OBJECT_STORE_BYTES = 2 * (10 ** 9)
+
     def init_cluster(self, redis_address):
         assert self.runs_cluster
         ray.init(
-            redis_address=redis_address,
-            redis_max_memory=min(10 ** 10, int(psutil.virtual_memory().total * 0.1)),
-            object_store_memory=min(2 * (10 ** 10), int(psutil.virtual_memory().total * 0.4)),
+            address=redis_address,
+            object_store_memory=self._OBJECT_STORE_BYTES,
         )
 
     def init_local(self):
         if self.runs_distributed:
             ray.init(
-                redis_max_memory=min(10 ** 10, int(psutil.virtual_memory().total * 0.1)),
-                object_store_memory=min(2 * (10 ** 10), int(psutil.virtual_memory().total * 0.4)),
+                object_store_memory=self._OBJECT_STORE_BYTES,
+                ignore_reinit_error=True,
             )
 
     def get(self, obj):

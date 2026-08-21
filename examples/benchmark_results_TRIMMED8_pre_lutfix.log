@@ -1,0 +1,159 @@
+Starting benchmark run at Tue 18 Aug 2026 10:42:23 PM PDT
+Running as unit: run-u2726.scope; invocation ID: 01a04312ba7c48fb8c0715b3e7f12ae0
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Benchmarking step 70 (/home/ai1/poker_ai_data/eval_agent/FLO_HiLo_HU_dense_residual_/70/eval_agentSINGLE.pkl)
+Strategy buffer: capped to 8 nets/seat
+Hands per opponent: 5000 (2500 per seat)
+
+=== BASELINE: ABCBot vs. BayesianBot (no agent): 5000 hands ===
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.7841209440000001
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.4526227559999998
+  [ABCBot in seat 0] hand 0/2500
+  [ABCBot in seat 0] hand 250/2500
+  [ABCBot in seat 0] hand 500/2500
+  [ABCBot in seat 0] hand 750/2500
+  [ABCBot in seat 0] hand 1000/2500
+  [ABCBot in seat 0] hand 1250/2500
+  [ABCBot in seat 0] hand 1500/2500
+  [ABCBot in seat 0] hand 1750/2500
+  [ABCBot in seat 0] hand 2000/2500
+  [ABCBot in seat 0] hand 2250/2500
+  [ABCBot in seat 1] hand 0/2500
+  [ABCBot in seat 1] hand 250/2500
+  [ABCBot in seat 1] hand 500/2500
+  [ABCBot in seat 1] hand 750/2500
+  [ABCBot in seat 1] hand 1000/2500
+  [ABCBot in seat 1] hand 1250/2500
+  [ABCBot in seat 1] hand 1500/2500
+  [ABCBot in seat 1] hand 1750/2500
+  [ABCBot in seat 1] hand 2000/2500
+  [ABCBot in seat 1] hand 2250/2500
+ABCBot vs BayesianBot: -314.1 milliBB/hand [-411.9, -216.3] (95% CI)
+VERDICT: ABCBot is LOSING TO BayesianBot
+
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.6969448110000016
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.45149719699999835
+  (loaded: strategy nets per seat = [8, 8])
+=== Trained agent (step 70) vs. ABCBot: 5000 hands ===
+/home/ai1/Documents/omaha_rl/PokerRL-Omaha/DeepCFR/IterationStrategy.py:65: UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_new.cpp:252.)
+  pub_obses = torch.tensor(pub_obses, dtype=torch.float32, device=self._device)
+/home/ai1/Documents/omaha_rl/PokerRL-Omaha/DeepCFR/IterationStrategy.py:81: UserWarning: where received a uint8 condition tensor. This behavior is deprecated and will be removed in a future version of PyTorch. Use a boolean condition instead. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/TensorCompare.cpp:621.)
+  torch.where(legal_action_masks.byte(), advantages, torch.full_like(advantages, fill_value=-10e20))
+  [ABCBot] seat 0: hand 0/2500
+  [ABCBot] seat 0: hand 250/2500
+  [ABCBot] seat 0: hand 500/2500
+  [ABCBot] seat 0: hand 750/2500
+  [ABCBot] seat 0: hand 1000/2500
+  [ABCBot] seat 0: hand 1250/2500
+  [ABCBot] seat 0: hand 1500/2500
+  [ABCBot] seat 0: hand 1750/2500
+  [ABCBot] seat 0: hand 2000/2500
+  [ABCBot] seat 0: hand 2250/2500
+  [ABCBot] seat 1: hand 0/2500
+  [ABCBot] seat 1: hand 250/2500
+  [ABCBot] seat 1: hand 500/2500
+  [ABCBot] seat 1: hand 750/2500
+  [ABCBot] seat 1: hand 1000/2500
+  [ABCBot] seat 1: hand 1250/2500
+  [ABCBot] seat 1: hand 1500/2500
+  [ABCBot] seat 1: hand 1750/2500
+  [ABCBot] seat 1: hand 2000/2500
+  [ABCBot] seat 1: hand 2250/2500
+Trained agent vs ABCBot: -639.6 milliBB/hand [-809.9, -469.3] (95% CI)
+VERDICT: LOSING TO ABCBot
+
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.7092436089999978
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.45732329700000207
+  (loaded: strategy nets per seat = [8, 8])
+=== Trained agent (step 70) vs. BayesianBot: 5000 hands ===
+  [BayesianBot] seat 0: hand 0/2500
+  [BayesianBot] seat 0: hand 250/2500
+  [BayesianBot] seat 0: hand 500/2500
+  [BayesianBot] seat 0: hand 750/2500
+  [BayesianBot] seat 0: hand 1000/2500
+  [BayesianBot] seat 0: hand 1250/2500
+  [BayesianBot] seat 0: hand 1500/2500
+  [BayesianBot] seat 0: hand 1750/2500
+  [BayesianBot] seat 0: hand 2000/2500
+  [BayesianBot] seat 0: hand 2250/2500
+  [BayesianBot] seat 1: hand 0/2500
+  [BayesianBot] seat 1: hand 250/2500
+  [BayesianBot] seat 1: hand 500/2500
+  [BayesianBot] seat 1: hand 750/2500
+  [BayesianBot] seat 1: hand 1000/2500
+  [BayesianBot] seat 1: hand 1250/2500
+  [BayesianBot] seat 1: hand 1500/2500
+  [BayesianBot] seat 1: hand 1750/2500
+  [BayesianBot] seat 1: hand 2000/2500
+  [BayesianBot] seat 1: hand 2250/2500
+Trained agent vs BayesianBot: +1.4 milliBB/hand [-123.6, +126.4] (95% CI)
+VERDICT: STATISTICALLY TIED WITH BayesianBot
+
+=== New (step 70) vs. Old (step 0): 5000 hands ===
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.7020965279999984
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.4362999239999965
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.6902447789999968
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.4389460430000014
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.6952025509999942
+time elapsed for get_range_idx_to_private_obs_LUT PLO 0.43949517400000104
+Hand: 0 out of 2500
+Hand: 100 out of 2500
+Hand: 200 out of 2500
+Hand: 300 out of 2500
+Hand: 400 out of 2500
+Hand: 500 out of 2500
+Hand: 600 out of 2500
+Hand: 700 out of 2500
+Hand: 800 out of 2500
+Hand: 900 out of 2500
+Hand: 1000 out of 2500
+Hand: 1100 out of 2500
+Hand: 1200 out of 2500
+Hand: 1300 out of 2500
+Hand: 1400 out of 2500
+Hand: 1500 out of 2500
+Hand: 1600 out of 2500
+Hand: 1700 out of 2500
+Hand: 1800 out of 2500
+Hand: 1900 out of 2500
+Hand: 2000 out of 2500
+Hand: 2100 out of 2500
+Hand: 2200 out of 2500
+Hand: 2300 out of 2500
+Hand: 2400 out of 2500
+Hand: 0 out of 2500
+Hand: 100 out of 2500
+Hand: 200 out of 2500
+Hand: 300 out of 2500
+Hand: 400 out of 2500
+Hand: 500 out of 2500
+Hand: 600 out of 2500
+Hand: 700 out of 2500
+Hand: 800 out of 2500
+Hand: 900 out of 2500
+Hand: 1000 out of 2500
+Hand: 1100 out of 2500
+Hand: 1200 out of 2500
+Hand: 1300 out of 2500
+Hand: 1400 out of 2500
+Hand: 1500 out of 2500
+Hand: 1600 out of 2500
+Hand: 1700 out of 2500
+Hand: 1800 out of 2500
+Hand: 1900 out of 2500
+Hand: 2000 out of 2500
+Hand: 2100 out of 2500
+Hand: 2200 out of 2500
+Hand: 2300 out of 2500
+Hand: 2400 out of 2500
+Played 5000 hands of poker.
+Player 1 SINGLE: 1761.0999755859375 milliBB per hand +/- 130.03731961602324
+Player 2 SINGLE: -1761.0999755859375 milliBB per hand+/- 130.03731961602324
+New (step 70) vs Old (step 0): +1761.1 milliBB/hand [+1891.1, +1631.1] (95% CI)
+VERDICT: New agent is BEATING the old (step 0) snapshot
+
+Benchmark complete.
+Finished at Tue 18 Aug 2026 10:44:26 PM PDT

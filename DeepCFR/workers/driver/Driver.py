@@ -20,6 +20,18 @@ class Driver(DriverBase):
                          iteration_to_import=iteration_to_import, name_to_import=name_to_import,
                          chief_cls=Chief, eval_agent_cls=EvalAgentDeepCFR)
 
+        # A bounded Chief strategy buffer reservoir-samples, so entries get overwritten
+        # at random indices and `size` freezes at max_size. The evaluator pull protocol
+        # (Chief._pull_single_eval_strat) ships nets by index range and treats "how many
+        # you already have" as its entire cursor, so under bounding it would silently
+        # ship the wrong nets and then stop shipping forever. Fail loudly instead.
+        if len(eval_methods) > 0 and t_prof.eval_agent_max_strat_buf_size is not None:
+            raise ValueError(
+                "eval_agent_max_strat_buf_size bounds the Chief's strategy buffer, which is "
+                "incompatible with the evaluator pull protocol (it assumes buffer index == "
+                f"arrival order and no eviction). Got eval_methods={list(eval_methods)}. "
+                "Either run with eval_methods={} or leave eval_agent_max_strat_buf_size=None.")
+
         if "h2h" in list(eval_methods.keys()):
             assert EvalAgentDeepCFR.EVAL_MODE_SINGLE in t_prof.eval_modes_of_algo
             assert EvalAgentDeepCFR.EVAL_MODE_AVRG_NET in t_prof.eval_modes_of_algo

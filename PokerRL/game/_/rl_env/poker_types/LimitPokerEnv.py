@@ -18,9 +18,11 @@ class LimitPokerEnv(_PokerEnv):
     def __init__(self,
                  env_args,
                  is_evaluating,
-                 lut_holder):
+                 lut_holder,
+                 hh_logger=None):
         assert isinstance(env_args, LimitPokerEnvArgs)
-        super().__init__(env_args=env_args, lut_holder=lut_holder, is_evaluating=is_evaluating)
+        super().__init__(env_args=env_args, lut_holder=lut_holder, is_evaluating=is_evaluating,
+                         hh_logger=hh_logger)
         self.uniform_action_interpolation = False
         self.N_ACTIONS = env_args.N_ACTIONS
 

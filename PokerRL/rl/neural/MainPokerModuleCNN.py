@@ -3,6 +3,8 @@
 import torch
 import torch.nn as nn
 
+from PokerRL.rl.neural._shared_luts import get_shared_lut
+
 
 class MainPokerModuleCNN(nn.Module):
     """
@@ -56,11 +58,12 @@ class MainPokerModuleCNN(nn.Module):
         else:
             raise ValueError('CNN requires pre_layers to be enabled')
 
-        self.lut_range_idx_2_priv_o = torch.from_numpy(self.env_bldr.lut_holder.LUT_RANGE_IDX_TO_PRIVATE_OBS)
-        self.lut_range_idx_2_priv_o = self.lut_range_idx_2_priv_o.to(device=self.device, dtype=torch.float32)
-
-        self.lut_range_idx_2_priv_o_pf = torch.from_numpy(self.env_bldr.lut_holder.LUT_RANGE_IDX_TO_PRIVATE_OBS_PF)
-        self.lut_range_idx_2_priv_o_pf = self.lut_range_idx_2_priv_o_pf.to(device=self.device, dtype=torch.float32)
+        # Shared across all nets in this process -- see _shared_luts.get_shared_lut
+        # for why a per-net copy cost ~140MB here.
+        self.lut_range_idx_2_priv_o = get_shared_lut(self.env_bldr, self.device,
+                                                     "LUT_RANGE_IDX_TO_PRIVATE_OBS")
+        self.lut_range_idx_2_priv_o_pf = get_shared_lut(self.env_bldr, self.device,
+                                                        "LUT_RANGE_IDX_TO_PRIVATE_OBS_PF")
 
         self.to(device)
 

@@ -10,7 +10,6 @@ and so on in order to make HH file properly readable by PT4.
 
 import numpy as np
 from PokerRL.game.hh_log import HandHistoryLogger
-from PokerRL.game.games import DiscretizedNLHoldem
 
 
 class AgentTournament:
@@ -38,8 +37,8 @@ class AgentTournament:
 
         REFERENCE_AGENT = 0
 
-        _env = DiscretizedNLHoldem(env_args=self._env_args, is_evaluating=True,
-                                   lut_holder=self._lut_holder, hh_logger=self._logger)
+        _env = self._env_cls(env_args=self._env_args, is_evaluating=True,
+                             lut_holder=self._lut_holder, hh_logger=self._logger)
         winnings = np.empty(shape=(n_games_per_seat * _env.N_SEATS), dtype=np.float32)
 
         for seat_p0 in range(_env.N_SEATS):
