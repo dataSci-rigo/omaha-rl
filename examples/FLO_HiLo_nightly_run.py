@@ -204,7 +204,14 @@ if __name__ == '__main__':
         # max_buffer_size_adv=1M each write is ~0.9GB. At freq=1 that cost ~15-20%
         # of wall-clock and forced every buffer page resident. At 10 a SIGTERM at
         # the 07:00 cutoff loses at most ~20min of work.
-        checkpoint_freq=10,
+        # 5, not 10: at ~3.1 min/iteration (4 distributed workers) plus ~1 min
+        # startup, iteration 10 lands at ~32 min -- past RuntimeMaxSec. With
+        # freq=10 every 30-min cycle died just before its FIRST checkpoint and
+        # restarted from zero (caught in the Aug 20 verification hour; a full
+        # night would have produced nothing). freq=5 checkpoints at ~16 min,
+        # safely inside any cycle; the ~0.9GB pickle every 5 iterations costs
+        # ~6% of wall clock.
+        checkpoint_freq=5,
         eval_agent_export_freq=10,
 
         n_actions_traverser_samples=3,

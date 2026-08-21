@@ -151,10 +151,10 @@ class _PayoutTestBase(TestCase):
         )
         self.assertEqual(gains, [600, 0, 0])
 
-    def test_odd_chip_conserved_on_uneven_split(self):
-        # Pot of 25 split hi/lo between two different players: 12 + 12 with one
-        # remainder chip. Whoever gets it, chips must be conserved and the
-        # remainder must go to one of the two winners, not the loser.
+    def test_odd_chip_goes_to_hi_deterministically(self):
+        # Pot of 25 split hi/lo: the standard O8 rule gives the odd chip to the
+        # HIGH side (hi_half = ceil(pot/2) = 13, lo_half = 12), deterministically.
+        # This is also what pokerkit does, enabling exact differential testing.
         gains = self.run_showdown(
             self.make_env(),
             board="3h 4d 8s Kh Qd",
@@ -163,10 +163,21 @@ class _PayoutTestBase(TestCase):
                    "Ah 2c 7h 9c"],    # only low
             main_pot=25,
         )
-        self.assertEqual(sum(gains), 25)
-        self.assertEqual(gains[1], 0, "a losing player received the odd chip")
-        self.assertIn(gains[0], (12, 13))
-        self.assertIn(gains[2], (12, 13))
+        self.assertEqual(gains, [13, 0, 12])
+
+    def test_lo_half_remainder_goes_left_of_button(self):
+        # Pot 10: hi half 5 -> P0. Lo half 5 split between two tied nut lows
+        # (P1, P2): 2 each, remainder 1 to the earliest seat left of the button
+        # (button is seat 0 at 3+ seats, so P1 gets it).
+        gains = self.run_showdown(
+            self.make_env(),
+            board="3h 4d 8s Kh Qd",
+            hands=["Kd Kc Th Tc",     # trip kings, hi winner, no low
+                   "Ah 2c 9h 9c",     # nut low 8432A, hi = pair of nines
+                   "As 2d Jh Jc"],    # identical nut low, hi = pair of jacks
+            main_pot=10,
+        )
+        self.assertEqual(gains, [5, 3, 2])
 
     def test_heads_up_split_matches_three_way_logic(self):
         # Same payout path must hold at N_SEATS=2 (regression guard: the hi-only

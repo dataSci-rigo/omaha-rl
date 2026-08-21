@@ -1,121 +1,124 @@
-# Overnight PLO training plan (laptop)
+# Nightly FLO Hi/Lo training plan (desktop)
 
-Train the Deep CFR / SD-CFR Pot Limit Omaha agent on this laptop, running only
-**11pm–7am nightly** so daytime use is unaffected, resuming automatically from
-checkpoints each night.
+Train the Deep CFR / SD-CFR **Fixed-Limit Omaha Hi/Lo (8-or-better)** heads-up
+agent on the desktop, running only **11pm–7am nightly** so daytime use is
+unaffected, resuming automatically from checkpoints each night.
 
-## Hardware constraints (measured 2026-08-08)
+The laptop's PLO plan is in `TRAINING_PLAN_LAPTOP.md`. This box is the primary
+trainer; the custom O8 game variant (`FixedLimitOmahaHiLo` in
+`PokerRL/game/games.py`, `nit`-based hi/lo evaluator, split-pot payout) lives in
+this repo and is tested (`test/game/test_OmahaHiLoEval.py`,
+`test_OmahaHiLoPayout.py`).
 
-- Ryzen 5 5600H — 6 cores / 12 threads, **no CUDA GPU** (CPU-only torch)
-- 6 GB physical RAM; WSL2 capped at **3.8 GB + 8 GB swap** — sufficient, no increase needed
-- The stock config in `examples/PLO_training_start.py` (14 ray workers, 3M-entry
-  buffers) is sized for a server and would OOM here — it is scaled down, not reused.
+## Hardware (measured)
 
-## RAM budget (measured, not estimated)
+- 8 cores, 30 GB RAM, Ubuntu (native, systemd)
+- Quadro P4000 present but **unusable**: CUDA capability sm_61, installed torch
+  supports sm_75+ → effectively CPU-only. Do not chase the GPU.
+- Conda env `omaha` (`/home/ai1/anaconda3/envs/omaha/bin/python3`), ray 2.56
+- Data root `~/poker_ai_data`
 
-Advantage buffers are preallocated dense tensors at construction
-(`DeepCFR/workers/la/buffers/_ReservoirBufferBase.py:24-40`). For heads-up PLO with
-simplified obs and the PL_2 bet set: `pub_obs_size=109`, `N_ACTIONS=4` →
-**480 bytes/entry**.
+## Current lineage — restarted 2026-08-20, do not resurrect older checkpoints
 
-| Component | RAM |
-|---|---|
-| Both players' 1M-entry buffers (preallocated at startup) | 0.96 GB |
-| Torch runtime + PLO lookup tables | ~0.7 GB |
-| Transient copy during checkpoint pickling | ~1.0 GB |
-| **Peak** | **~2.6–3 GB** — fits the 3.8 GB cap with ~1 GB headroom |
+Everything trained before 2026-08-20 was **card-blind**: the fork's PLO LUT
+builder used `np.empty` and left the private-card observation rows mostly
+garbage (113 distinct rows for 270,725 hands postflop; **2** preflop). Those
+agents beat their own snapshots while losing ~500 mBB/hand to a simple rule
+bot. Fixed (np.zeros + true suit-isomorphic preflop bucketing, 16,432 classes);
+old artifacts archived in `~/poker_ai_data/archive_cardblind_20260820_1649/`.
+Anything found there is for archaeology only.
 
-Fallback if a night log ever shows an OOM kill: drop `max_buffer_size_adv` to 600k
-(~1.7–2 GB peak).
+## Schedule (systemd user units; linger is enabled)
 
-## Time estimate
+| Unit | When | What |
+|---|---|---|
+| `flo-hilo-training.timer` → `.service` | 23:00 | starts `examples/FLO_HiLo_nightly_run.py` |
+| (service) `RuntimeMaxSec=1800`, `Restart=always` | every 30 min | cycles the process; resume loses ≤ `checkpoint_freq` iterations |
+| `flo-hilo-training-stop.timer` | 07:00 | outer stop (needed because `Restart=always`) |
+| `flo-hilo-progress-check.timer` | 07:15 | `nightly_progress_check.py`: tonight vs the night's start marker, 20k hands |
 
-CPU-only, single process: ~15–30 min/iteration (sample generation dominates; the
-pure-Python Omaha hand evaluator is the wild card) → 64 iterations ≈ **16–32 h of
-compute ≈ 2–4 nights** at 8 h/night. Uncertainty is ~2–3× until the first night's
-log gives real per-iteration timings; refine the forecast after night 1.
+**Never run training manually during the day without asking.** Manual runs are
+fine when requested; stop them with
+`systemctl --user stop flo-hilo-training.service`.
 
-## Implementation steps
+## Config (`examples/FLO_HiLo_nightly_run.py`) — every value is load-bearing
 
-### 1. Conda env `omaha` (dedicated; ai_10 stays untouched)
+| Parameter | Value | Why |
+|---|---|---|
+| `DISTRIBUTED` / workers | **True / 4** | 4 real ray processes, ~3.5 cores. With `DISTRIBUTED=False` the worker count is silently forced to 1 (`TrainingProfile.py:264-269`) |
+| `n_traversals_per_iter` | 15,000 **per worker** | count is per-LA, never divided → 60k fresh entries/iteration |
+| `max_buffer_size_adv` | 1,000,000 | 472 B/entry/seat. At 75k the 1.5M draws/iteration meant 20:1 resampling — a full 272-iteration night produced **zero** measurable gain; at 1M, 30 iterations produced +150.7 mBB/hand. Grow-only on resume (migration in `_ReservoirBufferBase.load_state_dict`) |
+| `eval_agent_max_strat_buf_size` | 500 | bounds the Chief's SD-CFR net history via reservoir sampling (consistent estimator). Unbounded it grew ~2.4 GB/night forever. Requires `eval_methods={}` (guarded in `Driver`) |
+| `checkpoint_freq` | 10 | each checkpoint pickles the full 1M buffers (~0.9 GB); at freq=1 that cost 15–20% of wall clock |
+| `n_batches_adv_training` × `mini_batch_size_adv` | 750 × 2,000 | 1.5M draws/iteration |
+| net | dense_residual 192/64/64, lr 0.004 | matches the repo's reference configs |
+
+## Memory budget (measured, not estimated)
+
+Steady state ≈ **8–12 GB**: ~3.8 GB reservoir buffers (4 LA × 2 seats × 1M ×
+472 B) + bounded Chief (≤ 2×500 nets ≈ 4.8 GB at saturation, months away) +
+LUTs/nets/ray overhead. Service cap `MemoryMax=20G`, `MemorySwapMax=0`.
+
+**Never set `MemoryHigh`.** It is a soft throttle: crossing it puts the cgroup
+into continuous reclaim instead of failing — with swap off it does not degrade,
+it *halts* (117 s CPU across a 27-min run; one full night lost this way, plus a
+95-minute benchmark hang). `MemoryMax` either fits or dies cleanly, and
+`Restart=always` + checkpoint/resume recovers a clean kill.
+
+If usage ever climbs toward the cap again, that is a leak to diagnose, not a
+cap to raise. The two growth bugs found so far: per-net float32 LUT copies
+(~140 MB/net, fixed via `PokerRL/rl/neural/_shared_luts.py`) and the unbounded
+Chief buffer (fixed via the bound above).
+
+## Throughput (measured)
+
+- ~**3 min/iteration** at 4 workers (single-core was 1.85 — 4× data for 1.6×
+  time, ~2.5× net) → ~**160 iterations/night**
+- Fresh start pays ~40 s of LUT construction per worker process
+
+## Known repo pitfalls
+
+- **Shadow name:** resuming with `name_to_import == t_prof.name` makes
+  `DriverBase` append `_`; artifacts alternate between
+  `FLO_HiLo_HU_dense_residual` and `..._` nightly. All lookups must scan both
+  (`_CANDIDATE_NAMES` pattern).
+- **`AgentTournament.run()` returns `(mean, UPPER, LOWER)`** — not
+  (mean, lower, upper). Already bit us once.
+- **Exact BR and LBR do not work for this variant** (Leduc-only tree code;
+  `get_hand_rank_all_hands_on_given_boards` raises). Evaluation is
+  head-to-head only.
+- The session-start marker (`session_start_eval_agent_step.txt`, JSON) is
+  written at most once per night — the 30-min restart cycle used to overwrite
+  it 16×/night, making the morning check compare a 28-minute window.
+
+## Morning routine
 
 ```bash
-conda create -n omaha python=3.10 -y
-~/anaconda3/envs/omaha/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
-~/anaconda3/envs/omaha/bin/pip install gym scipy psutil pytz requests pycrayon
+journalctl --user -u flo-hilo-progress-check.service --since 07:00 | tail -20
+./examples/run_benchmark.sh --bot all --hands 5000     # vs ABCBot, BayesianBot, step-0
 ```
 
-No ray: non-distributed mode never imports it (`PokerRL/rl/MaybeRay.py` tunnels all
-calls through when `DISTRIBUTED=False`). gym is only used for `from gym import
-spaces` (`PokerRL/game/_/rl_env/base/PokerEnv.py:8`), so any version works. CPU
-torch wheel (~200 MB), not the CUDA one.
+20,000 hands ≈ 3 min ≈ ±91 mBB/hand CI; 5,000 ≈ ±180. The two external bots
+come from `~/Documents/omaha`; BayesianBot beats ABCBot by ~300–400 mBB/hand
+(stable baseline — if a run shows otherwise, suspect the harness first).
 
-### 2. Patch `PokerRL/_/CrayonWrapper.py`
+## Hyperparameter search
 
-`DriverBase.__init__` unconditionally constructs `CrayonClient`, which raises if no
-crayon/TensorBoard bridge server is listening — training won't start without this
-patch. Wrap the client construction in try/except → `self._crayon = None` plus a
-warning, and guard the crayon calls in `update_from_log_buffer()` / `export_all()`.
-JSON disk logs are kept where possible.
+`examples/hp_search.py` — forks trials from the newest checkpoint+export pair,
+runs N extra iterations per config in a memory-capped scope, scores each vs the
+frozen fork-point agent (fixed opponent ⇒ total order, no h2h intransitivity),
+appends to `~/poker_ai_hpsearch/<run>/results.jsonl`, tears down. Round-1 grid
+targets data volume (`n_traversals_per_iter` 15k→150k) — both the buffer result
+and the laptop plan's 50k setting say our fresh-data budget is the binding
+constraint. Full grid ≈ 6 h: start in the morning so it clears the 23:00 timer
+(it refuses to start while training is active, but will not stop itself).
 
-### 3. New `laptop/PLO_laptop_training.py`
+## Roadmap
 
-Copy of the stock script with a laptop-scaled `TrainingProfile`:
-
-| Parameter | Stock | Laptop | Why |
-|---|---|---|---|
-| `DISTRIBUTED` / workers | True / 14 | **False / 1** | no ray, single process |
-| `max_buffer_size_adv` | 3,000,000 | **1,000,000** | fits 3.8 GB (see budget) |
-| `n_traversals_per_iter` | 150,000 | **50,000** | CPU generation time |
-| `n_batches_adv_training` | 1,500 | **1,000** | CPU training time |
-| `mini_batch_size_adv` | 5,000 | **2,500** | CPU training time |
-| `checkpoint_freq` | 9999 | **2** | old checkpoints auto-deleted (`Driver.py:138-143`), disk-safe |
-| `eval_agent_export_freq` | 1 | 4 | fewer exports |
-| OMP / torch threads | 1 | **5** | stock starves single-process mode |
-
-Unchanged: `nn_type="dense_residual"`, net sizes 192/64/64, lr 0.004, patience 350,
-`init_adv_model="last"`, PLO / PL_2 / 2 seats / 10k chips, SD-CFR single eval mode,
-`n_iterations=64`. Data goes to `path_data=~/omaha_rl_data`.
-
-**Auto-resume**: scan `~/omaha_rl_data/checkpoint/<name>/` for the highest step dir;
-if found, pass `iteration_to_import=<step>, name_to_import=<dirname>` to `Driver`
-(pattern from `examples/load_checkpoint.py`; use the dir's basename since the stored
-name can differ by a trailing `_`).
-
-### 4. New `laptop/run_night.sh` (what Task Scheduler launches)
-
-- Appends timestamped output to `~/omaha_rl_data/night_logs/<date>.log`
-- `flock` lockfile → double-starts are no-ops
-- RAM guard: exits with a logged warning if `MemTotal` < 3.5 GB (misconfigured WSL)
-- Computes seconds until next 07:00, then
-  `timeout --signal=INT <budget>s nice -n 10 <omaha-python> -u laptop/PLO_laptop_training.py`
-  — SIGINT at 7am kills the run; the last even-iteration checkpoint survives and the
-  next night resumes from it. Exits cleanly once 64 iterations complete.
-
-### 5. Windows scheduled task (current-user, no admin)
-
-Via `powershell.exe Register-ScheduledTask "OmahaRL Nightly Training"`:
-daily 23:00 trigger, action `wsl.exe -d <distro> -- .../laptop/run_night.sh`,
-settings `-WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
--ExecutionTimeLimit 9h`.
-
-**User notes:** keep the laptop plugged in overnight; sleep is fine (WakeToRun),
-power-off is not.
-
-## Verification
-
-1. **Smoke test** (~2–5 min, low RAM): run the training script with a throwaway
-   name, `n_traversals_per_iter=50`, `n_batches_adv_training=20`, 2 iterations,
-   `path_data` in a temp dir — proves imports, the CrayonWrapper patch, the PLO
-   env, checkpoint write, and resume.
-2. Run `run_night.sh` manually once and confirm it starts (or cleanly guards).
-3. `schtasks /Query /TN "OmahaRL Nightly Training"` confirms registration.
-4. After night 1: read `~/omaha_rl_data/night_logs/` for real per-iteration
-   timings → refine the 2–4 night forecast.
-
-## Out of scope
-
-- LBR / head-to-head evaluation (run after training via `examples/eval_agent_lbr.py`
-  and `examples/interactive_agent_v_agent.py`)
-- ray-distributed mode (version pinning pain and RAM overhead for ~2× generation
-  speedup; revisit only if nightly wall time proves too slow)
+1. Nights of HU training + HP search until the agent beats ABCBot, then
+   BayesianBot (the Phase-2 bar from the original plan).
+2. Long-term goal is a **6-max table** (~10× HU cost; needs an N-seat
+   tournament — `AgentTournament_hu` is HU-only). Multiway engine + hi/lo
+   split-pot payout are already tested. Only one net layer (~1% of params)
+   depends on seat count, so the card tower warm-starts; 3-player
+   (~1.5–2× HU) is the natural stepping stone.

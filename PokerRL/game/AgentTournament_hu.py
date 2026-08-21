@@ -34,34 +34,45 @@ class AgentTournament:
         assert env_args.n_seats == 2
 
     def run(self, n_games_per_seat):
+        """
+        Mirrored-deck ("duplicate poker") evaluation: each deck is dealt once and
+        played TWICE with the agents' seats swapped, and one sample = the mean of
+        the two legs. Card luck largely cancels within each pair, so the 95% CI
+        shrinks substantially at the same hand count versus independent deals.
+        (The agents are frozen at eval time -- forward passes only -- so replaying
+        a deck cannot teach them anything.)
 
+        n_games_per_seat = number of deck PAIRS; total hands = 2x that, same as
+        the previous independent-deal scheme. Return contract unchanged:
+        (mean, upper95, lower95) -- note the order.
+        """
         REFERENCE_AGENT = 0
 
         _env = self._env_cls(env_args=self._env_args, is_evaluating=True,
                              lut_holder=self._lut_holder, hh_logger=self._logger)
-        winnings = np.empty(shape=(n_games_per_seat * _env.N_SEATS), dtype=np.float32)
+        pair_means = np.empty(shape=(n_games_per_seat,), dtype=np.float32)
 
-        for seat_p0 in range(_env.N_SEATS):
-            seat_p1 = 1 - seat_p0
+        for _hand_nr in range(n_games_per_seat):
+            deck_state_dict = None
 
-            # set correct player names here according to positions
-            # we rotate players positions to imitate blinds movement
+            leg_rews = []
+            for seat_p0 in range(_env.N_SEATS):
+                seat_p1 = 1 - seat_p0
 
-            if self._logger is not None:
-                if seat_p0 == REFERENCE_AGENT:
-                    self._logger.set_names(('Hero', 'Dummy'))
-                else:
-                    self._logger.set_names(('Dummy', 'Hero'))
+                # names follow the rotation so hand histories stay readable
+                if self._logger is not None:
+                    self._logger.set_names(('Hero', 'Dummy') if seat_p0 == REFERENCE_AGENT
+                                           else ('Dummy', 'Hero'))
 
-            for _hand_nr in range(n_games_per_seat):
                 # """""""""""""""""
-                # Reset
+                # Reset -- leg 1 deals fresh, leg 2 replays the same deck
                 # """""""""""""""""
-
-                _, r_for_all, done, info = _env.reset()
+                _, r_for_all, done, info = _env.reset(deck_state_dict=deck_state_dict)
+                if deck_state_dict is None:
+                    deck_state_dict = _env.cards_state_dict()
 
                 for e in self._eval_agents:
-                    e.reset(deck_state_dict=_env.cards_state_dict())
+                    e.reset(deck_state_dict=deck_state_dict)
 
                 # """""""""""""""""
                 # Play Episode
@@ -85,23 +96,21 @@ class AgentTournament:
 
                     _, r_for_all, done, info = _env.step(action_int)
 
-                # """""""""""""""""
-                # Add Rews
-                # """""""""""""""""
-                winnings[_hand_nr + (seat_p0 * n_games_per_seat)] = r_for_all[seat_p0] \
-                                                                    * _env.REWARD_SCALAR \
-                                                                    * _env.EV_NORMALIZER
-                if _hand_nr % 100 == 0:
-                    print(f"Hand: {_hand_nr} out of {n_games_per_seat}")
+                leg_rews.append(r_for_all[seat_p0] * _env.REWARD_SCALAR * _env.EV_NORMALIZER)
 
-        mean = np.mean(winnings).item()
-        std = np.std(winnings).item()
+            pair_means[_hand_nr] = 0.5 * (leg_rews[0] + leg_rews[1])
+            if _hand_nr % 100 == 0:
+                print(f"Hand: {_hand_nr} out of {n_games_per_seat}")
 
-        _d = 1.96 * std / np.sqrt(n_games_per_seat * _env.N_SEATS)
+        mean = np.mean(pair_means).item()
+        std = np.std(pair_means).item()
+
+        # CI over mirrored PAIRS (each pair is one sample)
+        _d = 1.96 * std / np.sqrt(n_games_per_seat)
         lower_conf95 = mean - _d
         upper_conf95 = mean + _d
 
-        print(f"Played {n_games_per_seat * 2} hands of poker.")
+        print(f"Played {n_games_per_seat * 2} hands of poker (mirrored decks).")
         print("Player 1", self._eval_agents[REFERENCE_AGENT].get_mode() + ":", mean, "milliBB per hand +/-", _d)
         print("Player 2", self._eval_agents[1 - REFERENCE_AGENT].get_mode() + ":", (-mean), "milliBB per hand+/-", _d)
 

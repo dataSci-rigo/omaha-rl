@@ -573,16 +573,17 @@ class PokerEnv:
                                 self._hh_logger.push_winner(p_id=p.seat_id, amount=chips_per_winner / len(winner_list),
                                                             cards=p.hand, pot_type=1)
 
-                    # distribute the rest randomly.
-                    shuffled_winner_idxs = np.arange(num_winners)
-                    np.random.shuffle(shuffled_winner_idxs)
-                    for p_idx in shuffled_winner_idxs[:num_non_div_chips]:
-                        self.seats[p_idx].award(1)
+                    # Odd chips to the earliest winner(s) left of the button -- deterministic.
+                    # This block previously (a) picked recipients at RANDOM and, worse,
+                    # (b) indexed `self.seats[p_idx]` with an index into `winner_list`,
+                    # so a losing (even folded) player could be awarded the odd chip.
+                    for p in self._in_button_order(winner_list)[:num_non_div_chips]:
+                        p.award(1)
 
                         # HH logger part, needs correction cuz duplicates winner
                         # instead of increase his chips amount by 1
                         if self._hh_logger is not None:
-                            self._hh_logger.push_winner(p_id=0, amount=1, cards=self.seats[p_idx].hand,
+                            self._hh_logger.push_winner(p_id=p.seat_id, amount=1, cards=p.hand,
                                                         pot_type=1)
 
             if self._hh_logger is not None:
@@ -592,43 +593,59 @@ class PokerEnv:
             self.side_pots = [0] * self.N_SEATS
             self.main_pot = 0
 
-    def _get_hi_lo_shares(self, players_to_consider):
+    def _get_hi_lo_winners(self, players_to_consider):
         """
-        For Omaha Hi/Lo (self.USES_HI_LO): splits one pot's shares between the best hi
-        hand and the best qualifying (8-or-better) lo hand. player.hand_rank is expected
-        to be a (hi_rank, lo_rank_or_None) pair (see OmahaHiLoRules.get_hand_rank).
+        For Omaha Hi/Lo (self.USES_HI_LO): the winner sets for one pot.
+        player.hand_rank is a (hi_rank, lo_rank_or_None) pair (see
+        OmahaHiLoRules.get_hand_rank).
 
         Returns:
-            dict: {PokerPlayer: float share of the pot}. Shares sum to 1.0. A player who
-                wins both halves (or is the only eligible player) appears once with the
-                combined share.
+            (hi_winners, lo_winners): lists of PokerPlayer. lo_winners is empty
+                when no player has a qualifying (8-or-better) low, in which case
+                the hi hand(s) scoop.
         """
         hi_best = max(p.hand_rank[0] for p in players_to_consider)
         hi_winners = [p for p in players_to_consider if p.hand_rank[0] == hi_best]
 
         lo_qualified = [p for p in players_to_consider if p.hand_rank[1] is not None]
-
-        shares = {}
         if len(lo_qualified) == 0:
-            # No qualifying low -- the hi hand(s) scoop the entire pot.
-            for p in hi_winners:
-                shares[p] = shares.get(p, 0.0) + 1.0 / len(hi_winners)
-        else:
-            lo_best = max(p.hand_rank[1] for p in lo_qualified)
-            lo_winners = [p for p in lo_qualified if p.hand_rank[1] == lo_best]
+            return hi_winners, []
+        lo_best = max(p.hand_rank[1] for p in lo_qualified)
+        return hi_winners, [p for p in lo_qualified if p.hand_rank[1] == lo_best]
 
-            for p in hi_winners:
-                shares[p] = shares.get(p, 0.0) + 0.5 / len(hi_winners)
-            for p in lo_winners:
-                shares[p] = shares.get(p, 0.0) + 0.5 / len(lo_winners)
+    def _in_button_order(self, players):
+        """Players sorted by position: first seat left of the button acts first
+        in the standard odd-chip rule."""
+        return sorted(players, key=lambda p: (p.seat_id - self.BTN_POS - 1) % self.N_SEATS)
 
-        return shares
+    def _split_half_deterministic(self, amount, winners):
+        """
+        Splits `amount` chips among `winners` per the standard casino rule:
+        equal integer shares, remainder chips one each to the earliest seats
+        left of the button. Deterministic and exact.
+
+        Returns {player: chips}. (Replaced a float-share scheme that handed the
+        rounding remainder to a RANDOM recipient -- a small persistent EV noise
+        term, a reproducibility hazard, and a guaranteed mismatch against any
+        rules oracle such as pokerkit.)
+        """
+        base, remainder = divmod(int(amount), len(winners))
+        payouts = {p: base for p in winners}
+        for p in self._in_button_order(winners)[:remainder]:
+            payouts[p] += 1
+        return payouts
 
     def _payout_pots_hi_lo(self):
         """
         Omaha Hi/Lo (self.USES_HI_LO) version of _payout_pots(). Splits each pot (main
-        pot + side pots) between hi and lo winners via _get_hi_lo_shares() instead of
-        awarding it whole to the single-scalar-rank winner(s).
+        pot + side pots) between hi and lo winners instead of awarding it whole
+        to the single-scalar-rank winner(s).
+
+        Odd chips follow the standard O8 casino rule, fully deterministic:
+        when a pot splits hi/lo and is odd, the HIGH side gets the extra chip
+        (hi_half = ceil(pot/2)); within either half, remainder chips go to the
+        earliest seat(s) left of the button. This matches pokerkit, which makes
+        exact-payout differential testing against it possible.
         """
         self._assign_hand_ranks_to_all_players()
 
@@ -637,31 +654,29 @@ class PokerEnv:
 
         for pot, rank in zip(pots, pot_ranks):
             eligible_players = [p for p in self.seats if p.side_pot_rank >= rank and not p.folded_this_episode]
-            if len(eligible_players) == 0:
+            if len(eligible_players) == 0 or int(pot) == 0:
                 continue
+            pot = int(pot)
 
-            shares = self._get_hi_lo_shares(players_to_consider=eligible_players)
+            hi_winners, lo_winners = self._get_hi_lo_winners(players_to_consider=eligible_players)
 
-            remaining = int(pot)
-            recipients = list(shares.keys())
-            for p in recipients:
-                amt = int(pot * shares[p])  # rounds down
-                remaining -= amt
+            if len(lo_winners) == 0:
+                # no qualifying low: hi scoops the whole pot
+                payouts = self._split_half_deterministic(pot, hi_winners)
+            else:
+                lo_half = pot // 2
+                hi_half = pot - lo_half  # hi side gets the odd chip
+                payouts = self._split_half_deterministic(hi_half, hi_winners)
+                for p, amt in self._split_half_deterministic(lo_half, lo_winners).items():
+                    payouts[p] = payouts.get(p, 0) + amt
+
+            n_recipients = len(payouts)
+            for p, amt in payouts.items():
                 if amt > 0:
                     p.award(amt)
-                if self._hh_logger is not None:
-                    self._hh_logger.push_winner(p_id=p.seat_id, amount=amt, cards=p.hand,
-                                                pot_type=0 if len(recipients) == 1 else 1)
-
-            # distribute the rounding remainder randomly, same convention as the hi-only path
-            if remaining > 0:
-                shuffled_idxs = np.arange(len(recipients))
-                np.random.shuffle(shuffled_idxs)
-                for idx in shuffled_idxs[:remaining]:
-                    p = recipients[idx]
-                    p.award(1)
                     if self._hh_logger is not None:
-                        self._hh_logger.push_winner(p_id=p.seat_id, amount=1, cards=p.hand, pot_type=1)
+                        self._hh_logger.push_winner(p_id=p.seat_id, amount=amt, cards=p.hand,
+                                                    pot_type=0 if n_recipients == 1 else 1)
 
         if self._hh_logger is not None:
             self._hh_logger.show_down()

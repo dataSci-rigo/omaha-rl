@@ -203,7 +203,9 @@ def _run_in_scope(desc, argv, mem_max="20G"):
     rather than fails (it has cost a full night and a 95-min benchmark hang)."""
     cmd = ["systemd-run", "--user", "--scope", "--collect", "-q",
            f"-p", f"MemoryMax={mem_max}", "-p", "MemorySwapMax=0",
-           f"--setenv=PYTHONPATH={REPO}", "--setenv=PYTHONUNBUFFERED=1"]
+           f"--setenv=PYTHONPATH={REPO}", "--setenv=PYTHONUNBUFFERED=1",
+           # loopback-pin ray: a LAN-IP blip crashed a training cycle on Aug 20
+           "--setenv=RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=0"]
     if "HP_DATA_PATH" in os.environ:  # propagate test override into workers
         cmd.append(f"--setenv=HP_DATA_PATH={os.environ['HP_DATA_PATH']}")
     cmd += argv
