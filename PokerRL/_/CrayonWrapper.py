@@ -63,7 +63,7 @@ class CrayonWrapper:
             create_dir_if_not_exist(path=path_json)
             for e in self._experiments.values():
                 e.to_zip(filename=ospj(path_crayon, e.xp_name + ".zip"))
-                write_dict_to_file_json(dictionary=self._custom_logs, _dir=path_json, file_name="logs")
+            write_dict_to_file_json(dictionary=self._custom_logs, _dir=path_json, file_name="logs")
 
     def update_from_log_buffer(self):
         """
