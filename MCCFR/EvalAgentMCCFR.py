@@ -13,7 +13,7 @@ against the env -- cursor drift fails loudly, never silently.
 """
 import numpy as np
 
-from MCCFR.betting_tree import build_tree, DECISION
+from MCCFR.betting_tree import load_or_build_tree, DECISION
 from PokerRL.rl.base_cls.EvalAgentBase import EvalAgentBase
 
 
@@ -28,7 +28,7 @@ class EvalAgentMCCFR(EvalAgentBase):
         # the wrapper is unusable (and unpicklable) before its first reset;
         # every tournament resets again per hand, re-syncing the cursor
         self._internal_env_wrapper.reset()
-        self.tree = build_tree()
+        self.tree = load_or_build_tree(n_seats=getattr(t_prof, "n_seats", 2))
         self.avg_strategy = None   # list of float32[rows, 3], rows sum to 1 or 0
         self.K = None
         self._node = self.tree.ROOT
@@ -51,8 +51,9 @@ class EvalAgentMCCFR(EvalAgentBase):
             if getattr(t, "bucketer_kind", "m1") != "m1":
                 raise NotImplementedError(t.bucketer_kind)
             from MCCFR.abstraction.m1_bins import M1Bucketer
-            self._bucketer = M1Bucketer(k_postflop=t.k_postflop,
-                                        n_rollouts=t.n_rollouts)
+            self._bucketer = M1Bucketer(
+                k_postflop=t.k_postflop, n_rollouts=t.n_rollouts,
+                n_opponents=getattr(t, "n_seats", 2) - 1)
             assert list(self._bucketer.K) == self.K, \
                 f"strategy K={self.K} != bucketer K={self._bucketer.K}"
         return self._bucketer
@@ -103,7 +104,7 @@ class EvalAgentMCCFR(EvalAgentBase):
                         + board_2d[dealt, 1].astype(np.int64))
             bucket = bucketer.bucket(street, hole_1d, board_1d)
 
-        row = int(tree.decision_idx[node]) * self.K[street] + bucket
+        row = int(tree.infoset_idx[node]) * self.K[street] + bucket
         probs = self.avg_strategy[street][row].astype(np.float64)
         mask = tree.legal_mask(node)
         probs = np.where(mask, probs, 0.0)

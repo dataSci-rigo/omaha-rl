@@ -28,7 +28,7 @@ import numpy as np
 
 from MCCFR.betting_tree import (DECISION, FOLD_TERMINAL, SHOWDOWN_TERMINAL,
                                 N_ACTIONS)
-from MCCFR.showdown import showdown_payoff
+from MCCFR.showdown import showdown_payoff_multi
 from PokerRL.game._.cpp_wrappers.CppHandEvalHiLo import CppHandEvalHiLo
 from MCCFR.abstraction.equity import _CARD_2D
 
@@ -50,12 +50,13 @@ class ESMCCFRSolver:
 
     def __init__(self, tree, bucketer, seed=0):
         self.tree = tree
+        self.n_seats = tree.n_seats
         self.bucketer = bucketer
         self.K = list(bucketer.K)
         self.regret = []
         self.avg_strat = []
         for s in range(tree.n_streets):
-            n_rows = tree.n_decisions_per_street[s] * self.K[s]
+            n_rows = tree.n_infosets_per_street[s] * self.K[s]
             self.regret.append(np.zeros((n_rows, N_ACTIONS), dtype=np.float64))
             self.avg_strat.append(np.zeros((n_rows, N_ACTIONS), dtype=np.float64))
         self.iteration = 0
@@ -77,7 +78,7 @@ class ESMCCFRSolver:
             if t * self.weight_scale > _RESCALE_TRIGGER:
                 self._rescale()
             w = t * self.weight_scale
-            for traverser in (0, 1):
+            for traverser in range(self.n_seats):
                 self._run_one_traversal(traverser, w)
             if progress_cb is not None and self.iteration % progress_every == 0:
                 progress_cb(self)
@@ -89,11 +90,12 @@ class ESMCCFRSolver:
         self.weight_scale *= _RESCALE_FACTOR
 
     def _run_one_traversal(self, traverser, w):
+        n = self.n_seats
         perm = self.rng.permutation(52).astype(np.int8)
-        self._holes = (perm[0:4], perm[4:8])
-        self._board5 = perm[8:13]
+        self._holes = tuple(perm[4 * p:4 * p + 4] for p in range(n))
+        self._board5 = perm[4 * n:4 * n + 5]
         # per-deal memos
-        self._buckets = [[-1] * self.tree.n_streets for _ in range(2)]
+        self._buckets = [[-1] * self.tree.n_streets for _ in range(n)]
         self._showdown_chips = None
         self._traverse(self.tree.ROOT, traverser, w)
 
@@ -116,7 +118,7 @@ class ESMCCFRSolver:
             board_2d = _CARD_2D[self._board5]
             ranks = [self._evaluator.get_hand_rank_52_plo8(
                 hand_2d=_CARD_2D[h], board_2d=board_2d) for h in self._holes]
-            # pot differs per terminal; cache ranks via a closure-free memo:
+            # pot/actives differ per terminal; cache ranks + a chips memo:
             self._ranks = ranks
             self._showdown_chips = {}
         return self._ranks
@@ -126,23 +128,32 @@ class ESMCCFRSolver:
         ntype = tree.node_type[node]
 
         if ntype == FOLD_TERMINAL:
-            f = tree.folder[node]
             c = tree.committed[node]
-            return float(c[1 - traverser]) if f != traverser else -float(c[traverser])
+            mask = int(tree.folded_mask[node])
+            if (mask >> traverser) & 1:
+                return -float(c[traverser])
+            return float(sum(int(c[p]) for p in range(self.n_seats)
+                             if (mask >> p) & 1))
 
         if ntype == SHOWDOWN_TERMINAL:
             ranks = self._showdown()
-            pot = int(tree.committed[node, 0]) + int(tree.committed[node, 1])
-            chips = self._showdown_chips.get(pot)
+            mask = int(tree.folded_mask[node])
+            if (mask >> traverser) & 1:
+                return -float(tree.committed[node, traverser])
+            pot = int(tree.committed[node].sum())
+            key = (pot, mask)
+            chips = self._showdown_chips.get(key)
             if chips is None:
-                chips = showdown_payoff(ranks[0], ranks[1], pot)
-                self._showdown_chips[pot] = chips
+                chips = showdown_payoff_multi(
+                    [None if (mask >> p) & 1 else ranks[p]
+                     for p in range(self.n_seats)], pot, self.n_seats)
+                self._showdown_chips[key] = chips
             return chips[traverser] - float(tree.committed[node, traverser])
 
         # decision node
         actor = tree.actor[node]
         street = tree.street[node]
-        row = tree.decision_idx[node] * self.K[street] + self._bucket(actor, street)
+        row = tree.infoset_idx[node] * self.K[street] + self._bucket(actor, street)
         legal_mask = self._legal_masks[node]
         table = self.regret[street]
         sigma = regret_matching(table[row], legal_mask)
@@ -203,6 +214,7 @@ class ESMCCFRSolver:
             "weight_scale": self.weight_scale,
             "seed": self.seed,
             "K": self.K,
+            "n_seats": self.n_seats,
             "rng_state": _encode_rng_state(self.rng.bit_generator.state),
         })
         with open(tmp, "wb") as f:
@@ -217,6 +229,8 @@ class ESMCCFRSolver:
             solver = cls(tree, bucketer, seed=meta["seed"])
             assert solver.K == meta["K"], \
                 f"checkpoint K={meta['K']} != bucketer K={solver.K}"
+            assert solver.n_seats == meta.get("n_seats", 2), \
+                f"checkpoint n_seats={meta.get('n_seats', 2)} != tree {solver.n_seats}"
             for s in range(tree.n_streets):
                 solver.regret[s][:] = data[f"regret_{s}"]
                 solver.avg_strat[s][:] = data[f"avg_{s}"]

@@ -25,10 +25,11 @@ class M1Bucketer:
     """
 
     def __init__(self, k_postflop=50, n_rollouts=32, rng=None,
-                 cache_max_entries=2_000_000):
+                 cache_max_entries=2_000_000, n_opponents=1):
         self.K = [N_PREFLOP_CLASSES, k_postflop, k_postflop, k_postflop]
         self.n_rollouts = n_rollouts
-        self._features = RolloutFeatures(rng=rng)
+        self.n_opponents = n_opponents
+        self._features = RolloutFeatures(rng=rng, n_opponents=n_opponents)
         idx_to_hc = build_idx_to_hole_cards()
         self._hc_to_idx = build_hole_cards_to_idx(idx_to_hc)
         self._preflop_class = build_preflop_class_map(idx_to_hc)
